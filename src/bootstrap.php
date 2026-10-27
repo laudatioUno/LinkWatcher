@@ -8,7 +8,7 @@ declare(strict_types=1);
  */
 
 define('LW_ROOT', dirname(__DIR__));
-define('LW_VERSION', '1.0.0');
+define('LW_VERSION', trim((string) @file_get_contents(LW_ROOT . '/VERSION')) ?: 'dev');
 
 spl_autoload_register(static function (string $class): void {
     $prefix = 'LinkWatcher\\';

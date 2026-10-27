@@ -94,3 +94,11 @@ data/       SQLite database, lock file (not in git)
 public/     web root: index.php + assets
 src/        application code (sync, checker, runner, mail, web UI)
 ```
+
+## Versioning & releases
+
+The version lives in the `VERSION` file (shown in the dashboard footer and the alert mail).
+
+To publish a release, bump `VERSION` in your pull request (e.g. `1.0.0` → `1.1.0`). When the PR is merged to `main`, the GitHub Action `.github/workflows/release.yml` lints the PHP files, creates the tag `v<version>` and a GitHub release with generated release notes and a `.zip` / `.tar.gz` of the app attached. A version with a suffix (e.g. `1.1.0-beta.1`) is published as pre-release. If the tag already exists, nothing happens; the workflow can also be started by hand under *Actions → Release → Run workflow*.
+
+To update an installation, replace the files with the new release – `config/config.php` and `data/` are not part of the archive and stay untouched. Database changes are migrated automatically on the next run.

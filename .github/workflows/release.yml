@@ -1,0 +1,78 @@
+name: Release
+
+# Creates a GitHub release when the VERSION file changes on main.
+# Bump the version in VERSION (e.g. 1.0.0 → 1.1.0) in your PR – merging it to main publishes v<version>.
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error file=VERSION::'$VERSION' is not a valid version (expected e.g. 1.2.3)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the release already exists
+        id: exists
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists – nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Lint PHP
+        if: steps.exists.outputs.exists == 'false'
+        run: |
+          find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l > /dev/null
+
+      - name: Build archive
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git archive --format=zip --prefix="LinkWatcher-$VERSION/" -o "LinkWatcher-$VERSION.zip" HEAD
+          git archive --format=tar.gz --prefix="LinkWatcher-$VERSION/" -o "LinkWatcher-$VERSION.tar.gz" HEAD
+
+      - name: Create release
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          PRERELEASE=""
+          [[ "$VERSION" == *-* ]] && PRERELEASE="--prerelease"
+          gh release create "$TAG" \
+            "LinkWatcher-$VERSION.zip" \
+            "LinkWatcher-$VERSION.tar.gz" \
+            --target "$GITHUB_SHA" \
+            --title "LinkWatcher $VERSION" \
+            --generate-notes \
+            $PRERELEASE
