@@ -6,8 +6,8 @@ use LinkWatcher\Util;
 $tabs = ['active' => 'Aktiv (' . $keyCounts['active'] . ')', 'archived' => 'Archiviert (' . $keyCounts['archived'] . ')', 'all' => 'Alle'];
 ?>
 <div class="page-head">
-    <h1>Textkeys</h1>
-    <p class="muted">Alle Textkeys mit URL aus den Quelldateien. Verschwundene Keys werden archiviert und bei Wiederauftauchen reaktiviert.</p>
+    <h1>Textkeys &amp; FAQ</h1>
+    <p class="muted">Alle Textkeys und FAQ-Fragen mit URL aus den Quellen. Verschwundene Keys werden archiviert und bei Wiederauftauchen reaktiviert.</p>
 </div>
 
 <section class="card">
@@ -44,10 +44,15 @@ $tabs = ['active' => 'Aktiv (' . $keyCounts['active'] . ')', 'archived' => 'Arch
                     <?php $archived = $k['archived_at'] !== null || !$k['source_active']; ?>
                     <tr class="<?= $archived ? 'is-archived' : '' ?>">
                         <td>
-                            <code><?= h($k['key_name']) ?></code>
+                            <?php if (!empty($k['title'])): ?>
+                                <div class="faq-title"><?= h($k['title']) ?></div>
+                                <div class="muted small"><?= h($k['context'] ?? '') ?></div>
+                            <?php else: ?>
+                                <code><?= h($k['key_name']) ?></code>
+                            <?php endif; ?>
                             <?php if ($archived): ?><span class="pill pill-ignored">archiviert</span><?php endif; ?>
-                            <?php $line = Util::lineUrl($k['view_url'], $k['line'] ? (int) $k['line'] : null); ?>
-                            <?php if ($line && !$archived): ?><a class="ext small" href="<?= h($line) ?>" target="_blank" rel="noopener noreferrer">GitHub ↗</a><?php endif; ?>
+                            <?php $line = Util::keyLink($k); ?>
+                            <?php if ($line && !$archived): ?><a class="ext small" href="<?= h($line) ?>" target="_blank" rel="noopener noreferrer"><?= h(Util::keyLinkLabel($k)) ?></a><?php endif; ?>
                         </td>
                         <td class="nowrap"><?= h($k['label']) ?> <span class="lang"><?= h(strtoupper($k['language'])) ?></span></td>
                         <td class="url-list">

@@ -73,7 +73,61 @@ final class Checker
             }
         }
 
+        return $this->checkAnchors($urls, $results);
+    }
+
+    /**
+     * For links like https://swiyu.admin.ch/de/hilfe-e-id#doc-1jnf616eh0 the page answers 200 even if the
+     * referenced question is gone. On the configured hosts we therefore look for the anchor in the page.
+     */
+    private function checkAnchors(array $urls, array $results): array
+    {
+        $hosts = (array) ($this->cfg['anchor_check_hosts'] ?? []);
+        if ($hosts === []) {
+            return $results;
+        }
+        $pages = [];
+        $fetcher = new SourceFetcher($this->cfg);
+        foreach ($results as $id => $r) {
+            $fragment = (string) parse_url($urls[$id], PHP_URL_FRAGMENT);
+            // Only real element ids – not SPA routes like #/revokationsantrag
+            if ($r['status'] !== 'ok' || !preg_match('/^[A-Za-z][\w.:-]*$/', $fragment) || !self::hostMatches($urls[$id], $hosts)) {
+                continue;
+            }
+            $page = $r['final_url'] !== '' ? strtok($r['final_url'], '#') : strtok($urls[$id], '#');
+            if (!array_key_exists($page, $pages)) {
+                $fetched = $fetcher->fetch($page);
+                $pages[$page] = $fetched['ok'] ? $fetched['body'] : null;
+            }
+            if ($pages[$page] === null) {
+                continue;
+            }
+            if (!self::hasAnchor($pages[$page], $fragment)) {
+                $results[$id]['status'] = 'warning';
+                $results[$id]['message'] = "Seite erreichbar, aber Anker #{$fragment} nicht gefunden (Frage/Abschnitt entfernt?)";
+            }
+        }
         return $results;
+    }
+
+    /** Matches id="x", name="x" and the swiyu FAQ scheme id="faq-123-x". */
+    public static function hasAnchor(string $html, string $fragment): bool
+    {
+        $f = preg_quote($fragment, '/');
+        return (bool) preg_match('/\s(?:id|name)=["\'](?:[^"\']*-)?' . $f . '["\']/i', $html);
+    }
+
+    /** True if the URL's host equals one of the hosts or is a subdomain of it. */
+    public static function hostMatches(string $url, array $hosts): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        foreach ($hosts as $h) {
+            $h = strtolower(trim((string) $h));
+            if ($h !== '' && ($host === $h || str_ends_with($host, '.' . $h))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** @return array<int,array{errno:int,error:string,http_code:int,final_url:string,redirect_count:int,response_ms:int,method:string}> */
@@ -197,7 +251,8 @@ final class Checker
         }
 
         if ($this->cfg['redirect_is_warning'] && $r['redirect_count'] > 0
-            && self::normalize($r['final_url']) !== self::normalize($url)) {
+            && self::normalize($r['final_url']) !== self::normalize($url)
+            && !self::hostMatches($url, (array) ($this->cfg['redirect_ok_hosts'] ?? []))) {
             return $base + ['status' => 'warning', 'message' => 'Weiterleitung auf ' . $r['final_url']];
         }
 

@@ -64,6 +64,8 @@ final class Config
                 'retry_delay' => 15,
                 'slow_threshold_ms' => 8000,
                 'redirect_is_warning' => true,
+                'redirect_ok_hosts' => [],
+                'anchor_check_hosts' => [],
                 'warning_codes' => [401, 403, 429],
                 'verify_tls' => true,
                 'user_agent' => 'Mozilla/5.0 (compatible; LinkWatcher/' . LW_VERSION . '; +https://github.com/laudatioUno/LinkWatcher)',
@@ -182,6 +184,16 @@ final class Config
             $langs[$file['language']] = true;
         }
         return array_keys($langs);
+    }
+
+    /** @return array<string,string> label => 'faq' | 'app' */
+    public function sourceKinds(): array
+    {
+        $kinds = [];
+        foreach ($this->get('sources', []) as $i => $group) {
+            $kinds[(string) ($group['label'] ?? 'Quelle ' . ($i + 1))] = ($group['format'] ?? '') === 'faq_page' ? 'faq' : 'app';
+        }
+        return $kinds;
     }
 
     private static function guessFormat(string $url): string

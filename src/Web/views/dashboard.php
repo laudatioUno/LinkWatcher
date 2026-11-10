@@ -76,6 +76,14 @@ $filterUrl = static function (array $override) use ($filters): string {
                 <option value="<?= h($l) ?>" <?= $filters['lang'] === $l ? 'selected' : '' ?>><?= h(strtoupper($l)) ?></option>
             <?php endforeach; ?>
         </select>
+        <?php if (count($sourceLabels) > 1): ?>
+            <select name="src">
+                <option value="">Alle Quellen</option>
+                <?php foreach ($sourceLabels as $l): ?>
+                    <option value="<?= h($l) ?>" <?= $filters['src'] === $l ? 'selected' : '' ?>><?= h($l) ?></option>
+                <?php endforeach; ?>
+            </select>
+        <?php endif; ?>
         <button class="btn" type="submit">Filtern</button>
         <?php if (array_filter($filters)): ?><a class="btn btn-ghost" href="?p=dashboard">Zurücksetzen</a><?php endif; ?>
     </form>
@@ -90,7 +98,7 @@ $filterUrl = static function (array $override) use ($filters): string {
                     <th>Status</th>
                     <th>URL</th>
                     <th>Ergebnis</th>
-                    <th>Textkeys</th>
+                    <th>Verwendet in</th>
                     <th>Sprachen</th>
                     <th>Geprüft</th>
                 </tr>
@@ -111,11 +119,14 @@ $filterUrl = static function (array $override) use ($filters): string {
                         </td>
                         <td class="keys-cell">
                             <?php foreach (array_slice($u['key_names'], 0, 2) as $k): ?>
-                                <code><?= h($k) ?></code>
+                                <?php if ($k['faq']): ?><div class="faq-title"><?= h(mb_strimwidth($k['name'], 0, 80, '…')) ?></div><?php else: ?><code><?= h($k['name']) ?></code><?php endif; ?>
                             <?php endforeach; ?>
                             <?php if (count($u['key_names']) > 2): ?><span class="muted small">+<?= count($u['key_names']) - 2 ?></span><?php endif; ?>
                         </td>
-                        <td><?php foreach ($u['languages'] as $l): ?><span class="lang"><?= h(strtoupper($l)) ?></span><?php endforeach; ?></td>
+                        <td>
+                            <?php foreach ($u['languages'] as $l): ?><span class="lang"><?= h(strtoupper($l)) ?></span><?php endforeach; ?>
+                            <?php if (count($sourceLabels) > 1): ?><div class="muted small"><?= h(implode(', ', $u['labels'])) ?></div><?php endif; ?>
+                        </td>
                         <td class="nowrap muted small" title="<?= h(Util::fmt($u['last_checked_at'])) ?>"><?= h(Util::ago($u['last_checked_at'])) ?></td>
                     </tr>
                 <?php endforeach; ?>

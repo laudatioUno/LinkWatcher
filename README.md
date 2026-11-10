@@ -4,7 +4,7 @@ Nightly URL health watchdog for translation text keys.
 
 LinkWatcher fetches the localisation files of a (public) GitHub repository, picks every text key that contains a URL, checks all of those URLs and sends **one summary mail per night** when something is broken. A small dashboard shows the health of every URL, every key and every language.
 
-- **Sources:** iOS `.strings` (`"key" = "value";`) and Android `strings.xml` (`<string name="key">value</string>`, incl. `string-array` / `plurals`), any number of files and languages
+- **Sources:** iOS `.strings` (`"key" = "value";`) and Android `strings.xml` (`<string name="key">value</string>`, incl. `string-array` / `plurals`), any number of files and languages – plus the **FAQ pages of the swiyu website** (every question with a link in its answer)
 - **Key sync:** new keys are picked up automatically, vanished keys are archived (and restored if they come back)
 - **Checks:** parallel (`curl_multi`) with a per-host limit, HEAD with automatic GET fallback, redirects followed, timeouts, delayed retry for failures, identical URLs checked only once
 - **Result:** `OK` · `Warnung` (redirect to another URL, slow, 401/403/429 – often bot protection) · `Fehler` (4xx/5xx, DNS, connection, timeout, TLS)
@@ -75,6 +75,31 @@ Only keys whose value contains an `http(s)://` URL are tracked. `key_filter` (re
 
 Safety net: if a file suddenly contains no URL keys at all, or cannot be downloaded or parsed, nothing is archived and the problem is reported instead.
 
+## Website FAQ (swiyu help pages)
+
+A source with `'format' => 'faq_page'` reads the FAQ of [swiyu.admin.ch/de/hilfe](https://swiyu.admin.ch/de/hilfe). Configure only the help start page per language:
+
+```php
+[
+    'label'  => 'Website FAQ',
+    'format' => 'faq_page',
+    'files'  => [
+        'de' => ['url' => 'https://swiyu.admin.ch/de/hilfe'],
+        'fr' => ['url' => 'https://swiyu.admin.ch/fr/…'],   // start page of each language
+    ],
+],
+```
+
+- **Category pages are found automatically:** every link on the start page whose path starts with the start path plus `-` (`/de/hilfe` → `/de/hilfe-e-id`, `/fr/aide` → `/fr/aide-e-id`). New categories and questions are picked up, removed ones are archived. Quick-start guides and navigation are ignored.
+- **One entry per question**, identified by the CMS id (`data-doc-id`, e.g. `faq-466`), shown with its title and *Category › Section*, linked to the question on the website (`…/hilfe-e-id#doc-…`). Only links inside the answer are checked.
+- **Safety net:** if a category page cannot be loaded or suddenly contains no questions (e.g. after a redesign), the whole language is reported as source error and nothing is archived.
+- Test a page before adding it: `php bin/faq-test.php https://swiyu.admin.ch/fr/… -v` lists the categories, questions and links that were recognised (also works with a saved HTML file: `php bin/faq-test.php page.html <url>`).
+
+Two checker options help with the website links:
+
+- `checker.redirect_ok_hosts` – redirects on these hosts are expected and not reported (e.g. the CMS short links `backend.swiyu.admin.ch/141`, `youtu.be`, `sid.admin.ch`). The redirect target still has to answer.
+- `checker.anchor_check_hosts` – for links with `#anchor` on these hosts (e.g. `swiyu.admin.ch/de/hilfe-e-id#doc-…`) the page is loaded and the anchor must exist; otherwise the link is reported as warning, because the page itself still answers 200 when the referenced question was removed.
+
 ## Security
 
 - The SMTP password lives in `config/config.php` outside the web root (`chmod 600`, ignored by git). Alternatively set it via the environment variable `LINKWATCHER_SMTP_PASSWORD`.
@@ -88,7 +113,7 @@ Safety net: if a file suddenly contains no URL keys at all, or cannot be downloa
 ## Project structure
 
 ```
-bin/        CLI: run.php (cron), hash-password.php, test-mail.php
+bin/        CLI: run.php (cron), hash-password.php, test-mail.php, faq-test.php
 config/     config.example.php → config.php
 data/       SQLite database, lock file (not in git)
 public/     web root: index.php + assets

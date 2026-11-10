@@ -8,7 +8,7 @@ use PDO;
 
 final class Database
 {
-    private const SCHEMA_VERSION = 1;
+    private const SCHEMA_VERSION = 2;
 
     public static function open(string $path): PDO
     {
@@ -135,6 +135,12 @@ final class Database
                 CREATE INDEX idx_checks_url ON checks (url_id, checked_at);
                 CREATE INDEX idx_checks_run ON checks (run_id);
                 SQL);
+        }
+        if ($version < 2) {
+            // v1.1: FAQ pages – question title, breadcrumb and deep link per entry
+            $pdo->exec('ALTER TABLE text_keys ADD COLUMN title TEXT');
+            $pdo->exec('ALTER TABLE text_keys ADD COLUMN context TEXT');
+            $pdo->exec('ALTER TABLE text_keys ADD COLUMN link_url TEXT');
         }
         $stmt = $pdo->prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('schema_version', ?)");
         $stmt->execute([(string) self::SCHEMA_VERSION]);

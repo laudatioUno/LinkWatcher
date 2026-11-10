@@ -79,17 +79,25 @@ $timeline = array_reverse(array_slice($history, 0, 60));
     <h2>Verwendet in <?= count($keys) ?> Textkey<?= count($keys) === 1 ? '' : 's' ?></h2>
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Textkey</th><th>Quelle</th><th>Text</th><th></th></tr></thead>
+            <thead><tr><th>Textkey / Frage</th><th>Quelle</th><th>Text</th><th></th></tr></thead>
             <tbody>
             <?php foreach ($keys as $k): ?>
                 <?php $archived = $k['archived_at'] !== null || !$k['source_active']; ?>
                 <tr class="<?= $archived ? 'is-archived' : '' ?>">
-                    <td><code><?= h($k['key_name']) ?></code><?= $archived ? ' <span class="pill pill-ignored">archiviert</span>' : '' ?></td>
+                    <td>
+                        <?php if (!empty($k['title'])): ?>
+                            <div class="faq-title"><?= h($k['title']) ?></div>
+                            <div class="muted small"><?= h($k['context'] ?? '') ?></div>
+                        <?php else: ?>
+                            <code><?= h($k['key_name']) ?></code>
+                        <?php endif; ?>
+                        <?= $archived ? ' <span class="pill pill-ignored">archiviert</span>' : '' ?>
+                    </td>
                     <td class="nowrap"><?= h($k['label']) ?> <span class="lang"><?= h(strtoupper($k['language'])) ?></span></td>
                     <td class="value"><?= h(mb_strimwidth($k['value'], 0, 220, '…')) ?></td>
                     <td class="nowrap">
-                        <?php $line = Util::lineUrl($k['view_url'], $k['line'] ? (int) $k['line'] : null); ?>
-                        <?php if ($line && !$archived): ?><a href="<?= h($line) ?>" target="_blank" rel="noopener noreferrer">GitHub ↗</a><?php endif; ?>
+                        <?php $line = Util::keyLink($k); ?>
+                        <?php if ($line && !$archived): ?><a href="<?= h($line) ?>" target="_blank" rel="noopener noreferrer"><?= h(Util::keyLinkLabel($k)) ?></a><?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>

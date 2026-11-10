@@ -11,7 +11,7 @@ final class ParserFactory
         return match ($format) {
             'ios_strings' => new IosStringsParser(),
             'android_xml' => new AndroidXmlParser(),
-            default => throw new \InvalidArgumentException("Unbekanntes Format '{$format}' (erlaubt: ios_strings, android_xml, auto)."),
+            default => throw new \InvalidArgumentException("Unbekanntes Format '{$format}' (erlaubt: ios_strings, android_xml, faq_page, auto)."),
         };
     }
 }

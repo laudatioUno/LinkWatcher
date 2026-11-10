@@ -247,7 +247,7 @@ final class Runner
     private function keysForUrl(int $urlId): array
     {
         $stmt = $this->pdo->prepare(<<<'SQL'
-            SELECT k.key_name, k.line, s.label, s.language, s.view_url
+            SELECT k.key_name, k.line, k.title, k.context, k.link_url, s.label, s.language, s.view_url
             FROM key_urls ku
             JOIN text_keys k ON k.id = ku.text_key_id AND k.archived_at IS NULL
             JOIN sources s ON s.id = k.source_id AND s.active = 1

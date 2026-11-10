@@ -69,8 +69,9 @@ final class AlertMail
                 }
                 $out .= "\n";
                 foreach ($e['keys'] as $k) {
-                    $out .= "  • {$k['key_name']} – {$k['label']} [{$k['language']}]";
-                    $line = Util::lineUrl($k['view_url'], $k['line'] ? (int) $k['line'] : null);
+                    $out .= '  • ' . Util::keyTitle($k) . " – {$k['label']} [{$k['language']}]";
+                    $out .= !empty($k['context']) ? "\n    {$k['context']}" : '';
+                    $line = Util::keyLink($k);
                     $out .= $line ? "\n    {$line}\n" : "\n";
                 }
             }
@@ -96,10 +97,10 @@ final class AlertMail
     {
         $out = '';
         if ($sync['new_keys'] ?? []) {
-            $out .= "Neue Textkeys: " . implode(', ', $sync['new_keys']) . "\n";
+            $out .= "Neue Einträge: " . implode(', ', $sync['new_keys']) . "\n";
         }
         if ($sync['archived_keys'] ?? []) {
-            $out .= "Archivierte Textkeys: " . implode(', ', $sync['archived_keys']) . "\n";
+            $out .= "Archivierte Einträge: " . implode(', ', $sync['archived_keys']) . "\n";
         }
         return $out;
     }
@@ -152,10 +153,13 @@ final class AlertMail
                 $h .= '<div style="margin:4px 0 8px;color:' . $color . ';font-weight:600;font-size:14px;">' . h($e['message']) . $since . '</div>';
                 $h .= '<table cellpadding="0" cellspacing="0" style="font-size:13px;width:100%;">';
                 foreach ($e['keys'] as $k) {
-                    $line = Util::lineUrl($k['view_url'], $k['line'] ? (int) $k['line'] : null);
-                    $h .= '<tr><td style="padding:2px 0;font-family:SFMono-Regular,Consolas,monospace;">' . h($k['key_name']) . '</td>'
-                        . '<td style="padding:2px 8px;color:#4a5163;white-space:nowrap;">' . h($k['label']) . ' · ' . h(strtoupper($k['language'])) . '</td>'
-                        . '<td style="padding:2px 0;text-align:right;white-space:nowrap;">' . ($line ? '<a href="' . h($line) . '" style="color:#2754c5;">GitHub ↗</a>' : '') . '</td></tr>';
+                    $line = Util::keyLink($k);
+                    $name = !empty($k['title'])
+                        ? h($k['title']) . (!empty($k['context']) ? '<br><span style="color:#6b7385;font-size:12px;">' . h($k['context']) . '</span>' : '')
+                        : '<span style="font-family:SFMono-Regular,Consolas,monospace;">' . h($k['key_name']) . '</span>';
+                    $h .= '<tr><td style="padding:3px 0;vertical-align:top;">' . $name . '</td>'
+                        . '<td style="padding:3px 8px;color:#4a5163;white-space:nowrap;vertical-align:top;">' . h($k['label']) . ' · ' . h(strtoupper($k['language'])) . '</td>'
+                        . '<td style="padding:3px 0;text-align:right;white-space:nowrap;vertical-align:top;">' . ($line ? '<a href="' . h($line) . '" style="color:#2754c5;">' . h(Util::keyLinkLabel($k)) . '</a>' : '') . '</td></tr>';
                 }
                 $h .= '</table>';
                 if ($detail) {
@@ -176,7 +180,7 @@ final class AlertMail
 
         $sync = $d['sync'];
         if (($sync['new_keys'] ?? []) || ($sync['archived_keys'] ?? [])) {
-            $h .= $this->sectionTitle('Änderungen an Textkeys', '#4a5163');
+            $h .= $this->sectionTitle('Änderungen an Textkeys und FAQ', '#4a5163');
             $h .= '<div style="font-size:13px;color:#4a5163;">';
             if ($sync['new_keys']) {
                 $h .= '<p style="margin:0 0 6px;"><strong>Neu:</strong> ' . h(implode(', ', $sync['new_keys'])) . '</p>';

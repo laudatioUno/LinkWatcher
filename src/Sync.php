@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LinkWatcher;
 
+use LinkWatcher\Parser\FaqPageParser;
 use LinkWatcher\Parser\ParserFactory;
 use LinkWatcher\Parser\UrlExtractor;
 use PDO;
@@ -56,14 +57,17 @@ final class Sync
             }
 
             try {
-                $entries = ParserFactory::for($file['format'])->parse($result['body']);
+                $entries = $file['format'] === 'faq_page'
+                    ? $this->collectFaq($file['fetch_url'], $result['body'])
+                    : ParserFactory::for($file['format'])->parse($result['body']);
             } catch (\Throwable $e) {
-                $this->sourceError($sourceId, $file, 'Parser: ' . $e->getMessage(), $stats);
-                ($this->log)("✗ {$name}: Parser – {$e->getMessage()}");
+                $what = $file['format'] === 'faq_page' ? 'FAQ' : 'Parser';
+                $this->sourceError($sourceId, $file, "{$what}: " . $e->getMessage(), $stats);
+                ($this->log)("✗ {$name}: {$what} – {$e->getMessage()}");
                 continue;
             }
 
-            $withUrls = $this->filterEntries($entries);
+            $withUrls = $this->filterEntries($entries, $file['format'] !== 'faq_page');
             $previousCount = (int) $this->pdo->query("SELECT key_count FROM sources WHERE id = {$sourceId}")->fetchColumn();
 
             // Safety net: a file that suddenly has no URL keys at all is far more likely broken than intentional.
@@ -90,16 +94,43 @@ final class Sync
         return $stats;
     }
 
-    /** Keeps entries that contain at least one URL and match the optional key filter. */
-    private function filterEntries(array $entries): array
+    /**
+     * Fetches the FAQ start page's category pages (discovered automatically) and parses all questions.
+     * Any page that cannot be fetched makes the whole source fail, so nothing gets archived by mistake.
+     */
+    private function collectFaq(string $startUrl, string $startHtml): array
     {
-        $filter = $this->config->get('key_filter');
+        $parser = new FaqPageParser();
+        $entries = $parser->parse($startHtml, $startUrl);
+        $pages = $parser->discover($startHtml, $startUrl);
+        if ($pages === [] && $entries === []) {
+            throw new \RuntimeException('Auf der Startseite wurden weder Fragen noch Kategorieseiten gefunden.');
+        }
+        foreach ($pages as $page) {
+            $result = $this->fetcher->fetch($page);
+            if (!$result['ok']) {
+                throw new \RuntimeException("Kategorieseite {$page}: {$result['error']}");
+            }
+            $found = $parser->parse($result['body'], $page);
+            if ($found === []) {
+                throw new \RuntimeException("Kategorieseite {$page}: keine Fragen erkannt (Seitenaufbau geändert?)");
+            }
+            array_push($entries, ...$found);
+        }
+        ($this->log)('  FAQ: ' . count($pages) . ' Kategorieseiten, ' . count($entries) . ' Fragen');
+        return $entries;
+    }
+
+    /** Keeps entries that contain at least one URL and match the optional key filter. */
+    private function filterEntries(array $entries, bool $applyKeyFilter = true): array
+    {
+        $filter = $applyKeyFilter ? $this->config->get('key_filter') : null;
         $out = [];
         foreach ($entries as $entry) {
             if ($filter && !preg_match($filter, $entry['key'])) {
                 continue;
             }
-            $urls = UrlExtractor::extract($entry['value']);
+            $urls = $entry['urls'] ?? UrlExtractor::extract($entry['value']);
             if ($urls === []) {
                 continue;
             }
@@ -124,18 +155,21 @@ final class Sync
             }
 
             $insert = $this->pdo->prepare(
-                'INSERT INTO text_keys (source_id, key_name, value, line, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)'
+                'INSERT INTO text_keys (source_id, key_name, value, line, first_seen_at, last_seen_at, title, context, link_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $update = $this->pdo->prepare(
-                'UPDATE text_keys SET value = ?, line = ?, last_seen_at = ?, changed_at = ?, archived_at = NULL, archive_reason = NULL WHERE id = ?'
+                'UPDATE text_keys SET value = ?, line = ?, last_seen_at = ?, changed_at = ?, archived_at = NULL, archive_reason = NULL, title = ?, context = ?, link_url = ? WHERE id = ?'
             );
 
             foreach ($entries as $key => $entry) {
+                $title = $entry['title'] ?? null;
+                $context = isset($entry['category']) ? implode(' › ', array_filter([$entry['category'], $entry['section'] ?? ''])) : null;
+                $linkUrl = $entry['link_url'] ?? null;
                 if (!isset($existing[$key])) {
-                    $insert->execute([$sourceId, $key, $entry['value'], $entry['line'], $now, $now]);
+                    $insert->execute([$sourceId, $key, $entry['value'], $entry['line'], $now, $now, $title, $context, $linkUrl]);
                     $keyId = (int) $this->pdo->lastInsertId();
                     $stats['keys_new']++;
-                    $stats['new_keys'][] = "{$key} ({$label})";
+                    $stats['new_keys'][] = ($title ?? $key) . " ({$label})";
                 } else {
                     $row = $existing[$key];
                     $keyId = (int) $row['id'];
@@ -145,7 +179,7 @@ final class Sync
                     } elseif ($changed) {
                         $stats['keys_changed']++;
                     }
-                    $update->execute([$entry['value'], $entry['line'], $now, $changed ? $now : $row['changed_at'], $keyId]);
+                    $update->execute([$entry['value'], $entry['line'], $now, $changed ? $now : $row['changed_at'], $title, $context, $linkUrl, $keyId]);
                 }
                 $this->linkUrls($keyId, $entry['urls'], $now);
             }
@@ -155,7 +189,7 @@ final class Sync
                 if (!isset($entries[$key]) && $row['archived_at'] === null) {
                     $archive->execute([$now, $row['id']]);
                     $stats['keys_archived']++;
-                    $stats['archived_keys'][] = "{$key} ({$label})";
+                    $stats['archived_keys'][] = ($row['title'] ?? $key) . " ({$label})";
                 }
             }
             $this->pdo->commit();
