@@ -41,6 +41,53 @@ php bin/hash-password.php            # → paste the hash into config.php (admin
 
 `bin/run.php` options: `--quiet` (no output), `--no-mail`. Exit codes: `0` OK, `1` problems found, `2` run failed, `3` already running.
 
+## Update
+
+Updating means replacing the application files. Your own data lives in only two places, which must be kept:
+
+| Keep | What it is |
+|---|---|
+| `config/config.php` | your configuration incl. SMTP password and login hash |
+| `data/` | SQLite database (`linkwatcher.sqlite` plus `-wal` / `-shm` files while in use) and the lock file |
+
+Everything else (`bin/`, `public/`, `src/`, `config/config.example.php`, `VERSION`, `.htaccess` files, `README.md`) belongs to the release and is simply overwritten. The release archives do not contain `config/config.php` or anything in `data/`, so unpacking a release over an installation never touches your data.
+
+**1. Back up**
+
+Make sure no check is running (dashboard shows no "Prüfung läuft …", or avoid the cron time), then:
+
+```bash
+cd /path/to/LinkWatcher
+cp config/config.php ~/linkwatcher-backup-config.php
+sqlite3 data/linkwatcher.sqlite ".backup '$HOME/linkwatcher-backup.sqlite'"
+# without the sqlite3 tool: copy the whole data/ folder instead
+```
+
+**2. Replace the files** – one of these ways:
+
+- **Release archive (recommended):** download `LinkWatcher-<version>.zip` from [Releases](https://github.com/laudatioUno/LinkWatcher/releases), unpack it and copy the contents of the `LinkWatcher-<version>/` folder over the installation, overwriting existing files. With shell access, this also removes files that no longer exist in the new version while protecting your data:
+
+  ```bash
+  unzip LinkWatcher-1.1.0.zip
+  rsync -a --delete --exclude '/config/config.php' --exclude '/data/' LinkWatcher-1.1.0/ /path/to/LinkWatcher/
+  ```
+
+  Via FTP: upload the contents of `LinkWatcher-<version>/` and overwrite – but never delete `config/config.php` or the `data/` folder on the server.
+- **Git checkout:** if the installation is a git clone, `git pull` (or `git checkout v1.1.0`). `config/config.php` and `data/` are ignored by git and stay untouched.
+- **Test build of a pull request:** every PR has a package under *Actions → run → Artifacts*; install it the same way as a release archive.
+
+**3. Check the configuration**
+
+New options are documented in `config/config.example.php` and the release notes. Your `config/config.php` is never changed automatically: missing options use the built-in defaults, so compare it with `config.example.php` and add what you need (e.g. 1.1.0 adds the `faq_page` source and `checker.redirect_ok_hosts` / `checker.anchor_check_hosts`).
+
+**4. Done – database and verification**
+
+- Database changes are migrated automatically the first time the new version opens the database (next page view or cron run). There is nothing to run by hand.
+- Make sure `data/` is still writable for the web server user (and the cron user), especially after uploading via FTP.
+- The footer of the dashboard shows the installed version. Start a check with "Jetzt prüfen" to verify everything works.
+
+**Rollback:** put the previous release files back and restore the backup (`config.php` and the `.sqlite` file, after deleting `linkwatcher.sqlite-wal` / `-shm` in `data/`).
+
 ## Configuration of the sources
 
 ```php
@@ -126,4 +173,4 @@ The version lives in the `VERSION` file (shown in the dashboard footer and the a
 
 To publish a release, bump `VERSION` in your pull request (e.g. `1.0.0` → `1.1.0`). When the PR is merged to `main`, the GitHub Action `.github/workflows/release.yml` lints the PHP files, creates the tag `v<version>` and a GitHub release with generated release notes and a `.zip` / `.tar.gz` of the app attached. A version with a suffix (e.g. `1.1.0-beta.1`) is published as pre-release. If the tag already exists, nothing happens; the workflow can also be started by hand under *Actions → Release → Run workflow*.
 
-To update an installation, replace the files with the new release – `config/config.php` and `data/` are not part of the archive and stay untouched. Database changes are migrated automatically on the next run.
+How to install a new release on the server is described under [Update](#update).
