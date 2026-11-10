@@ -30,7 +30,7 @@ $kindLabels = ['app' => 'App-Textkeys', 'faq' => 'Website-FAQ'];
         <?php foreach (['ok', 'warning', 'error', 'pending', 'ignored'] as $s): ?>
             <span><i class="dot dot-<?= $s ?>"></i><?= h(Util::statusLabel($s)) ?></span>
         <?php endforeach; ?>
-        <span><i class="dot dot-missing"></i>fehlt in dieser Datei</span>
+        <span><i class="dot dot-missing"></i><?= $kind === 'faq' ? 'fehlt in dieser Sprache' : 'fehlt in dieser Datei' ?></span>
     </div>
 
     <?php if (!$matrix): ?>

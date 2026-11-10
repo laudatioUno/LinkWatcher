@@ -138,7 +138,7 @@ A source with `'format' => 'faq_page'` reads the FAQ of [swiyu.admin.ch/de/hilfe
 ```
 
 - **Category pages are found automatically:** every link in the page content whose path starts with the start path plus `-` (`/de/hilfe` → `/de/hilfe-e-id`, `/fr/aide` → `/fr/aide-e-id`). Links in header, navigation and footer and the quick-start guides are ignored. A linked page without any FAQ (e.g. `/de/hilfe-organisationen`) is skipped; pages can also be excluded explicitly with `'exclude' => ['/hilfe-organisationen']` (part of the URL). New categories and questions are picked up, removed ones are archived.
-- **One entry per question**, identified by the CMS id (`data-doc-id`, e.g. `faq-466`), shown with its title and *Category › Section*, linked to the question on the website (`…/hilfe-e-id#doc-…`). Only links inside the answer are checked.
+- **One entry per question**, identified by its anchor (e.g. `doc-1jqoaaah20`), which is the same in every language – so the matrix shows each question once with one dot per language – shown with its title and *Category › Section*, linked to the question on the website (`…/hilfe-e-id#doc-…`). Only links inside the answer are checked.
 - **Safety net:** if a category page cannot be loaded, or a page that had questions suddenly contains none (e.g. after a redesign), the whole language is reported as source error and nothing is archived.
 - Test a page before adding it: `php bin/faq-test.php https://swiyu.admin.ch/fr/… -v` lists the categories, questions and links that were recognised (also works with a saved HTML file: `php bin/faq-test.php page.html <url>`).
 

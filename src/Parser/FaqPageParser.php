@@ -7,6 +7,8 @@ namespace LinkWatcher\Parser;
 /**
  * Reads FAQ pages of the swiyu website (Next.js, server-rendered accordion).
  *
+ * Each question is keyed by its anchor (doc-1jqoaaah20), which is shared by all languages.
+ *
  * Structure relied upon (only semantic hooks, not the hashed CSS-module classes):
  *   <section id="…"><h2 class="section-title-label">Section</h2>
  *     <div class="content-type--faq" data-doc-id="466">
@@ -64,7 +66,9 @@ final class FaqPageParser
             }
             $urls = array_keys($urls);
 
-            $key = $docId !== null && $docId !== '' ? 'faq-' . $docId : 'faq-' . substr(sha1($title), 0, 10);
+            // Key: the anchor (doc-…) is the same question in every language, while data-doc-id differs
+            // per language. It links the languages of a question together (matrix) and survives rewording.
+            $key = $anchor ?? (($docId !== null && $docId !== '') ? 'faq-' . $docId : 'faq-' . substr(sha1($title), 0, 10));
             $text = self::text($answer);
             $entries[] = [
                 'key' => $key,

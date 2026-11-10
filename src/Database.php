@@ -8,7 +8,7 @@ use PDO;
 
 final class Database
 {
-    private const SCHEMA_VERSION = 2;
+    private const SCHEMA_VERSION = 3;
 
     public static function open(string $path): PDO
     {
@@ -141,6 +141,17 @@ final class Database
             $pdo->exec('ALTER TABLE text_keys ADD COLUMN title TEXT');
             $pdo->exec('ALTER TABLE text_keys ADD COLUMN context TEXT');
             $pdo->exec('ALTER TABLE text_keys ADD COLUMN link_url TEXT');
+        }
+        if ($version < 3) {
+            // v1.1: FAQ questions are keyed by their anchor (doc-…, same in all languages) instead of the
+            // per-language CMS id (faq-466). Rename existing rows so nothing gets archived and re-added.
+            $pdo->exec(<<<'SQL'
+                UPDATE OR IGNORE text_keys
+                SET key_name = substr(link_url, instr(link_url, '#') + 1)
+                WHERE key_name LIKE 'faq-%'
+                  AND link_url LIKE '%#doc-%'
+                  AND source_id IN (SELECT id FROM sources WHERE format = 'faq_page')
+                SQL);
         }
         $stmt = $pdo->prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('schema_version', ?)");
         $stmt->execute([(string) self::SCHEMA_VERSION]);
