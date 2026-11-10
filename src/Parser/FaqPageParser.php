@@ -82,7 +82,7 @@ final class FaqPageParser
 
     /**
      * Category pages linked from a help start page: same host, path = start path + "-…"
-     * (e.g. /de/hilfe → /de/hilfe-e-id, /fr/aide → /fr/aide-e-id).
+     * (e.g. /de/hilfe → /de/hilfe-e-id, /fr/aide → /fr/aide-e-id), outside header/nav/footer.
      *
      * @return list<string>
      */
@@ -94,7 +94,8 @@ final class FaqPageParser
         $prefix = rtrim($start['path'] ?? '/', '/') . '-';
 
         $pages = [];
-        foreach ($xp->query('//a[@href]') as $a) {
+        // Links in header, navigation and footer are never categories (e.g. "Hilfe für Organisationen").
+        foreach ($xp->query('//a[@href][not(ancestor::header or ancestor::nav or ancestor::footer)]') as $a) {
             /** @var \DOMElement $a */
             $url = self::resolve($a->getAttribute('href'), $startUrl);
             if ($url === null) {

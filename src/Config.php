@@ -186,6 +186,17 @@ final class Config
         return array_keys($langs);
     }
 
+    /** Reads an option of a source group (e.g. 'exclude' of a faq_page source). */
+    public function sourceOption(string $label, string $key, mixed $default = null): mixed
+    {
+        foreach ($this->get('sources', []) as $i => $group) {
+            if ((string) ($group['label'] ?? 'Quelle ' . ($i + 1)) === $label) {
+                return $group[$key] ?? $default;
+            }
+        }
+        return $default;
+    }
+
     /** @return array<string,string> label => 'faq' | 'app' */
     public function sourceKinds(): array
     {

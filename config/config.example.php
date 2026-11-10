@@ -64,6 +64,8 @@ return [
             // every question with a link in its answer is checked. Test a page first: php bin/faq-test.php <url>
             'label' => 'Website FAQ',
             'format' => 'faq_page',
+            // Optional: never follow linked pages whose URL contains one of these strings
+            // 'exclude' => ['/hilfe-organisationen'],
             'files' => [
                 'de' => ['url' => 'https://swiyu.admin.ch/de/hilfe'],
                 // 'fr' => ['url' => 'https://swiyu.admin.ch/fr/…'],

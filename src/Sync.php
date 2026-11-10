@@ -58,7 +58,7 @@ final class Sync
 
             try {
                 $entries = $file['format'] === 'faq_page'
-                    ? $this->collectFaq($file['fetch_url'], $result['body'])
+                    ? $this->collectFaq($sourceId, $file, $result['body'])
                     : ParserFactory::for($file['format'])->parse($result['body']);
             } catch (\Throwable $e) {
                 $what = $file['format'] === 'faq_page' ? 'FAQ' : 'Parser';
@@ -98,14 +98,27 @@ final class Sync
      * Fetches the FAQ start page's category pages (discovered automatically) and parses all questions.
      * Any page that cannot be fetched makes the whole source fail, so nothing gets archived by mistake.
      */
-    private function collectFaq(string $startUrl, string $startHtml): array
+    private function collectFaq(int $sourceId, array $file, string $startHtml): array
     {
+        $startUrl = $file['fetch_url'];
         $parser = new FaqPageParser();
         $entries = $parser->parse($startHtml, $startUrl);
-        $pages = $parser->discover($startHtml, $startUrl);
+        $exclude = (array) $this->config->sourceOption($file['label'], 'exclude', []);
+        $pages = array_values(array_filter(
+            $parser->discover($startHtml, $startUrl),
+            static function (string $page) use ($exclude): bool {
+                foreach ($exclude as $pattern) {
+                    if ($pattern !== '' && str_contains($page, (string) $pattern)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        ));
         if ($pages === [] && $entries === []) {
             throw new \RuntimeException('Auf der Startseite wurden weder Fragen noch Kategorieseiten gefunden.');
         }
+        $categories = 0;
         foreach ($pages as $page) {
             $result = $this->fetcher->fetch($page);
             if (!$result['ok']) {
@@ -113,12 +126,31 @@ final class Sync
             }
             $found = $parser->parse($result['body'], $page);
             if ($found === []) {
-                throw new \RuntimeException("Kategorieseite {$page}: keine Fragen erkannt (Seitenaufbau geändert?)");
+                // A linked page without FAQ (e.g. help for organisations) is simply skipped.
+                // Only a page that HAD questions before and now has none is an error – then nothing is archived.
+                if ($this->pageHadQuestions($sourceId, $page)) {
+                    throw new \RuntimeException("Kategorieseite {$page}: keine Fragen mehr erkannt (Seitenaufbau geändert?)");
+                }
+                ($this->log)("  FAQ: {$page} enthält keine Fragen – übersprungen");
+                continue;
             }
+            $categories++;
             array_push($entries, ...$found);
         }
-        ($this->log)('  FAQ: ' . count($pages) . ' Kategorieseiten, ' . count($entries) . ' Fragen');
+        if ($entries === []) {
+            throw new \RuntimeException('Keine FAQ-Fragen gefunden – stimmt die Startseite?');
+        }
+        ($this->log)("  FAQ: {$categories} Kategorieseiten, " . count($entries) . ' Fragen');
         return $entries;
+    }
+
+    private function pageHadQuestions(int $sourceId, string $page): bool
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT 1 FROM text_keys WHERE source_id = ? AND archived_at IS NULL AND (link_url = ? OR link_url LIKE ? ESCAPE '\\') LIMIT 1"
+        );
+        $stmt->execute([$sourceId, $page, addcslashes($page, '%_\\') . '#%']);
+        return (bool) $stmt->fetchColumn();
     }
 
     /** Keeps entries that contain at least one URL and match the optional key filter. */
