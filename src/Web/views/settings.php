@@ -72,6 +72,8 @@ $yesNo = static fn($v) => $v ? 'ja' : 'nein';
             <dt>Heartbeat</dt><dd><?= $alerts['heartbeat_url'] ? 'aktiv' : 'aus' ?></dd>
             <dt>Timeout</dt><dd><?= (int) $checker['timeout'] ?> s, <?= (int) $checker['max_concurrency'] ?> parallel (max. <?= (int) $checker['max_per_host'] ?> pro Host)</dd>
             <dt>Wiederholung</dt><dd><?= (int) $checker['retry_attempts'] ?>× nach <?= (int) $checker['retry_delay'] ?> s</dd>
+            <dt>Weiterleitung OK</dt><dd><?= h(($checker['redirect_ok_hosts'] ?? []) ? implode(', ', $checker['redirect_ok_hosts']) : '–') ?></dd>
+            <dt>Anker-Prüfung</dt><dd><?= h(($checker['anchor_check_hosts'] ?? []) ? implode(', ', $checker['anchor_check_hosts']) : 'aus') ?></dd>
             <dt>Warnung bei</dt><dd>Weiterleitung: <?= $yesNo($checker['redirect_is_warning']) ?>, HTTP <?= h(implode(', ', $checker['warning_codes'])) ?><?= $checker['slow_threshold_ms'] ? ', langsamer als ' . round($checker['slow_threshold_ms'] / 1000, 1) . ' s' : '' ?></dd>
         </dl>
     </section>

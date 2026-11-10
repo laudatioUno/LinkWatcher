@@ -28,6 +28,7 @@ return [
      * Source files with the text keys. One group per file type; 'files' maps language => path in the repo.
      * Format: 'ios_strings'  ("key" = "value";)
      *         'android_xml'  (<string name="key">value</string>)
+     *         'faq_page'     (swiyu website FAQ – give the help start page per language, see below)
      *         'auto'         (.xml → android_xml, otherwise ios_strings)
      * Instead of a path you can also give a direct URL: 'de' => ['url' => 'https://…'].
      */
@@ -58,9 +59,24 @@ return [
                 'en' => 'path/to/values/strings.xml',
             ],
         ],
+        [
+            // Website FAQ: start page per language. Category pages (e.g. /de/hilfe-e-id) are found automatically;
+            // every question with a link in its answer is checked. Test a page first: php bin/faq-test.php <url>
+            'label' => 'Website FAQ',
+            'format' => 'faq_page',
+            // Optional: never follow linked pages whose URL contains one of these strings
+            // 'exclude' => ['/hilfe-organisationen'],
+            'files' => [
+                'de' => ['url' => 'https://swiyu.admin.ch/de/hilfe'],
+                // 'fr' => ['url' => 'https://swiyu.admin.ch/fr/…'],
+                // 'it' => ['url' => 'https://swiyu.admin.ch/it/…'],
+                // 'en' => ['url' => 'https://swiyu.admin.ch/en/…'],
+                // 'rm' => ['url' => 'https://swiyu.admin.ch/rm/…'],
+            ],
+        ],
     ],
 
-    // Optional: only watch keys whose name matches this regex, e.g. '/_link/'. null = every key containing a URL.
+    // Optional: only watch keys whose name matches this regex (not applied to faq_page sources), e.g. '/_link/'. null = every key containing a URL.
     'key_filter' => null,
 
     'checker' => [
@@ -72,7 +88,15 @@ return [
         'retry_attempts' => 1,           // re-check failed URLs once more …
         'retry_delay' => 15,             // … after this many seconds
         'slow_threshold_ms' => 8000,     // slower responses are a warning (0 = off)
-        'redirect_is_warning' => true,   // a redirect to another URL is a warning (hint to update the link)
+        'redirect_is_warning' => true,   // a redirect to another URL is a warning (hint to update the link) …
+        'redirect_ok_hosts' => [         // … except for links on these hosts (incl. subdomains), where redirects are normal
+            'backend.swiyu.admin.ch',    //   CMS short links (backend.swiyu.admin.ch/141 → target page)
+            'youtu.be',
+            'sid.admin.ch',
+        ],
+        'anchor_check_hosts' => [        // for links with #anchor on these hosts, check that the anchor exists on the page
+            'swiyu.admin.ch',
+        ],
         'warning_codes' => [401, 403, 429], // treated as warning (often bot protection) instead of error
         'verify_tls' => true,            // a broken certificate is reported as error
     ],

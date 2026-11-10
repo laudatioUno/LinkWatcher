@@ -4,7 +4,7 @@ Nightly URL health watchdog for translation text keys.
 
 LinkWatcher fetches the localisation files of a (public) GitHub repository, picks every text key that contains a URL, checks all of those URLs and sends **one summary mail per night** when something is broken. A small dashboard shows the health of every URL, every key and every language.
 
-- **Sources:** iOS `.strings` (`"key" = "value";`) and Android `strings.xml` (`<string name="key">value</string>`, incl. `string-array` / `plurals`), any number of files and languages
+- **Sources:** iOS `.strings` (`"key" = "value";`) and Android `strings.xml` (`<string name="key">value</string>`, incl. `string-array` / `plurals`), any number of files and languages – plus the **FAQ pages of the swiyu website** (every question with a link in its answer)
 - **Key sync:** new keys are picked up automatically, vanished keys are archived (and restored if they come back)
 - **Checks:** parallel (`curl_multi`) with a per-host limit, HEAD with automatic GET fallback, redirects followed, timeouts, delayed retry for failures, identical URLs checked only once
 - **Result:** `OK` · `Warnung` (redirect to another URL, slow, 401/403/429 – often bot protection) · `Fehler` (4xx/5xx, DNS, connection, timeout, TLS)
@@ -41,6 +41,53 @@ php bin/hash-password.php            # → paste the hash into config.php (admin
 
 `bin/run.php` options: `--quiet` (no output), `--no-mail`. Exit codes: `0` OK, `1` problems found, `2` run failed, `3` already running.
 
+## Update
+
+Updating means replacing the application files. Your own data lives in only two places, which must be kept:
+
+| Keep | What it is |
+|---|---|
+| `config/config.php` | your configuration incl. SMTP password and login hash |
+| `data/` | SQLite database (`linkwatcher.sqlite` plus `-wal` / `-shm` files while in use) and the lock file |
+
+Everything else (`bin/`, `public/`, `src/`, `config/config.example.php`, `VERSION`, `.htaccess` files, `README.md`) belongs to the release and is simply overwritten. The release archives do not contain `config/config.php` or anything in `data/`, so unpacking a release over an installation never touches your data.
+
+**1. Back up**
+
+Make sure no check is running (dashboard shows no "Prüfung läuft …", or avoid the cron time), then:
+
+```bash
+cd /path/to/LinkWatcher
+cp config/config.php ~/linkwatcher-backup-config.php
+sqlite3 data/linkwatcher.sqlite ".backup '$HOME/linkwatcher-backup.sqlite'"
+# without the sqlite3 tool: copy the whole data/ folder instead
+```
+
+**2. Replace the files** – one of these ways:
+
+- **Release archive (recommended):** download `LinkWatcher-<version>.zip` from [Releases](https://github.com/laudatioUno/LinkWatcher/releases), unpack it and copy the contents of the `LinkWatcher-<version>/` folder over the installation, overwriting existing files. With shell access, this also removes files that no longer exist in the new version while protecting your data:
+
+  ```bash
+  unzip LinkWatcher-1.1.0.zip
+  rsync -a --delete --exclude '/config/config.php' --exclude '/data/' LinkWatcher-1.1.0/ /path/to/LinkWatcher/
+  ```
+
+  Via FTP: upload the contents of `LinkWatcher-<version>/` and overwrite – but never delete `config/config.php` or the `data/` folder on the server.
+- **Git checkout:** if the installation is a git clone, `git pull` (or `git checkout v1.1.0`). `config/config.php` and `data/` are ignored by git and stay untouched.
+- **Test build of a pull request:** every PR has a package under *Actions → run → Artifacts*; install it the same way as a release archive.
+
+**3. Check the configuration**
+
+New options are documented in `config/config.example.php` and the release notes. Your `config/config.php` is never changed automatically: missing options use the built-in defaults, so compare it with `config.example.php` and add what you need (e.g. 1.1.0 adds the `faq_page` source and `checker.redirect_ok_hosts` / `checker.anchor_check_hosts`).
+
+**4. Done – database and verification**
+
+- Database changes are migrated automatically the first time the new version opens the database (next page view or cron run). There is nothing to run by hand.
+- Make sure `data/` is still writable for the web server user (and the cron user), especially after uploading via FTP.
+- The footer of the dashboard shows the installed version. Start a check with "Jetzt prüfen" to verify everything works.
+
+**Rollback:** put the previous release files back and restore the backup (`config.php` and the `.sqlite` file, after deleting `linkwatcher.sqlite-wal` / `-shm` in `data/`).
+
 ## Configuration of the sources
 
 ```php
@@ -75,6 +122,31 @@ Only keys whose value contains an `http(s)://` URL are tracked. `key_filter` (re
 
 Safety net: if a file suddenly contains no URL keys at all, or cannot be downloaded or parsed, nothing is archived and the problem is reported instead.
 
+## Website FAQ (swiyu help pages)
+
+A source with `'format' => 'faq_page'` reads the FAQ of [swiyu.admin.ch/de/hilfe](https://swiyu.admin.ch/de/hilfe). Configure only the help start page per language:
+
+```php
+[
+    'label'  => 'Website FAQ',
+    'format' => 'faq_page',
+    'files'  => [
+        'de' => ['url' => 'https://swiyu.admin.ch/de/hilfe'],
+        'fr' => ['url' => 'https://swiyu.admin.ch/fr/…'],   // start page of each language
+    ],
+],
+```
+
+- **Category pages are found automatically:** every link in the page content whose path starts with the start path plus `-` (`/de/hilfe` → `/de/hilfe-e-id`, `/fr/aide` → `/fr/aide-e-id`). Links in header, navigation and footer and the quick-start guides are ignored. A linked page without any FAQ (e.g. `/de/hilfe-organisationen`) is skipped; pages can also be excluded explicitly with `'exclude' => ['/hilfe-organisationen']` (part of the URL). New categories and questions are picked up, removed ones are archived.
+- **One entry per question**, identified by its anchor (e.g. `doc-1jqoaaah20`), which is the same in every language – so the matrix shows each question once with one dot per language – shown with its title and *Category › Section*, linked to the question on the website (`…/hilfe-e-id#doc-…`). Only links inside the answer are checked.
+- **Safety net:** if a category page cannot be loaded, or a page that had questions suddenly contains none (e.g. after a redesign), the whole language is reported as source error and nothing is archived.
+- Test a page before adding it: `php bin/faq-test.php https://swiyu.admin.ch/fr/… -v` lists the categories, questions and links that were recognised (also works with a saved HTML file: `php bin/faq-test.php page.html <url>`).
+
+Two checker options help with the website links:
+
+- `checker.redirect_ok_hosts` – redirects on these hosts are expected and not reported (e.g. the CMS short links `backend.swiyu.admin.ch/141`, `youtu.be`, `sid.admin.ch`). The redirect target still has to answer.
+- `checker.anchor_check_hosts` – for links with `#anchor` on these hosts (e.g. `swiyu.admin.ch/de/hilfe-e-id#doc-…`) the page is loaded and the anchor must exist; otherwise the link is reported as warning, because the page itself still answers 200 when the referenced question was removed.
+
 ## Security
 
 - The SMTP password lives in `config/config.php` outside the web root (`chmod 600`, ignored by git). Alternatively set it via the environment variable `LINKWATCHER_SMTP_PASSWORD`.
@@ -88,7 +160,7 @@ Safety net: if a file suddenly contains no URL keys at all, or cannot be downloa
 ## Project structure
 
 ```
-bin/        CLI: run.php (cron), hash-password.php, test-mail.php
+bin/        CLI: run.php (cron), hash-password.php, test-mail.php, faq-test.php
 config/     config.example.php → config.php
 data/       SQLite database, lock file (not in git)
 public/     web root: index.php + assets
@@ -101,4 +173,4 @@ The version lives in the `VERSION` file (shown in the dashboard footer and the a
 
 To publish a release, bump `VERSION` in your pull request (e.g. `1.0.0` → `1.1.0`). When the PR is merged to `main`, the GitHub Action `.github/workflows/release.yml` lints the PHP files, creates the tag `v<version>` and a GitHub release with generated release notes and a `.zip` / `.tar.gz` of the app attached. A version with a suffix (e.g. `1.1.0-beta.1`) is published as pre-release. If the tag already exists, nothing happens; the workflow can also be started by hand under *Actions → Release → Run workflow*.
 
-To update an installation, replace the files with the new release – `config/config.php` and `data/` are not part of the archive and stay untouched. Database changes are migrated automatically on the next run.
+How to install a new release on the server is described under [Update](#update).

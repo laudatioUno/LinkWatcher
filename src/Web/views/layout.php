@@ -3,7 +3,7 @@
 $nav = [
     'dashboard' => 'Übersicht',
     'matrix' => 'Matrix',
-    'keys' => 'Textkeys',
+    'keys' => 'Textkeys & FAQ',
     'runs' => 'Prüfläufe',
     'settings' => 'Einstellungen',
 ];

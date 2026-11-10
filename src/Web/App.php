@@ -75,15 +75,19 @@ final class App
 
         $status = (string) ($_GET['status'] ?? '');
         $lang = (string) ($_GET['lang'] ?? '');
+        $src = (string) ($_GET['src'] ?? '');
         $q = trim((string) ($_GET['q'] ?? ''));
-        $filtered = array_filter($urls, static function (array $u) use ($status, $lang, $q): bool {
+        $filtered = array_filter($urls, static function (array $u) use ($status, $lang, $src, $q): bool {
             if ($status !== '' && $u['display_status'] !== $status) {
                 return false;
             }
             if ($lang !== '' && !in_array($lang, $u['languages'], true)) {
                 return false;
             }
-            if ($q !== '' && stripos($u['url'] . ' ' . implode(' ', $u['key_names']), $q) === false) {
+            if ($src !== '' && !in_array($src, $u['labels'], true)) {
+                return false;
+            }
+            if ($q !== '' && stripos($u['url'] . ' ' . implode(' ', array_column($u['key_names'], 'name')) . ' ' . implode(' ', array_keys($u['key_names'])), $q) === false) {
                 return false;
             }
             return true;
@@ -93,8 +97,9 @@ final class App
             'title' => 'Übersicht',
             'urls' => $filtered,
             'counts' => $counts,
-            'filters' => ['status' => $status, 'lang' => $lang, 'q' => $q],
+            'filters' => ['status' => $status, 'lang' => $lang, 'src' => $src, 'q' => $q],
             'languages' => $this->config->languages(),
+            'sourceLabels' => array_keys($this->config->sourceKinds()),
             'keyCounts' => $this->keyCounts(),
             'lastRun' => $this->pdo->query('SELECT * FROM runs ORDER BY id DESC LIMIT 1')->fetch() ?: null,
         ]);
@@ -102,8 +107,14 @@ final class App
 
     private function matrix(): void
     {
+        $kinds = $this->config->sourceKinds();
+        $available = array_values(array_unique($kinds));
+        $kind = (string) ($_GET['kind'] ?? '');
+        if (!in_array($kind, $available, true)) {
+            $kind = $available[0] ?? 'app';
+        }
         $rows = $this->pdo->query(<<<'SQL'
-            SELECT k.key_name, s.language, s.label, u.status, u.ignored
+            SELECT k.key_name, k.title, k.context, s.language, s.label, u.status, u.ignored
             FROM text_keys k
             JOIN sources s ON s.id = k.source_id AND s.active = 1
             LEFT JOIN key_urls ku ON ku.text_key_id = k.id
@@ -112,12 +123,26 @@ final class App
             ORDER BY k.key_name
             SQL)->fetchAll();
 
-        $labels = [];
-        foreach ($this->config->get('sources', []) as $group) {
-            $labels[] = (string) ($group['label'] ?? '');
+        $labels = array_keys(array_filter($kinds, static fn(string $k): bool => $k === $kind));
+        $languages = [];
+        foreach ($this->config->sourceFiles() as $file) {
+            if (in_array($file['label'], $labels, true)) {
+                $languages[$file['language']] = $file['language'];
+            }
         }
+        $languages = array_values($languages);
+        $langRank = array_flip($languages);
         $matrix = [];
+        $meta = [];
         foreach ($rows as $r) {
+            if (!in_array($r['label'], $labels, true)) {
+                continue;
+            }
+            // Title/breadcrumb of the first configured language (usually DE) labels the row.
+            $rank = $langRank[$r['language']] ?? 99;
+            if (!isset($meta[$r['key_name']]) || $rank < $meta[$r['key_name']]['rank']) {
+                $meta[$r['key_name']] = ['title' => $r['title'], 'context' => $r['context'], 'rank' => $rank];
+            }
             $st = $r['ignored'] ? 'ignored' : ($r['status'] ?? 'pending');
             $cell = &$matrix[$r['key_name']][$r['language']][$r['label']];
             if ($cell === null || Util::severity($st) > Util::severity($cell)) {
@@ -126,10 +151,17 @@ final class App
             unset($cell);
         }
 
+        if ($kind === 'faq') {
+            uksort($matrix, static fn($a, $b) => [$meta[$a]['context'] ?? '', $meta[$a]['title'] ?? $a] <=> [$meta[$b]['context'] ?? '', $meta[$b]['title'] ?? $b]);
+        }
+
         $this->render('matrix', [
             'title' => 'Matrix',
             'matrix' => $matrix,
-            'languages' => $this->config->languages(),
+            'meta' => $meta,
+            'kind' => $kind,
+            'kinds' => $available,
+            'languages' => $languages,
             'labels' => $labels,
         ]);
     }
@@ -145,8 +177,8 @@ final class App
         };
         $params = [];
         if ($q !== '') {
-            $where .= ' AND (k.key_name LIKE ? OR k.value LIKE ?)';
-            $params = ["%{$q}%", "%{$q}%"];
+            $where .= ' AND (k.key_name LIKE ? OR k.value LIKE ? OR k.title LIKE ?)';
+            $params = ["%{$q}%", "%{$q}%", "%{$q}%"];
         }
         $stmt = $this->pdo->prepare(<<<SQL
             SELECT k.*, s.label, s.language, s.view_url, s.active AS source_active,
@@ -154,7 +186,7 @@ final class App
                       FROM key_urls ku JOIN urls u ON u.id = ku.url_id WHERE ku.text_key_id = k.id) AS url_info
             FROM text_keys k JOIN sources s ON s.id = k.source_id
             {$where}
-            ORDER BY k.key_name, s.label, s.language
+            ORDER BY s.label, COALESCE(k.context, ''), COALESCE(k.title, k.key_name), s.language
             SQL);
         $stmt->execute($params);
         $keys = $stmt->fetchAll();
@@ -422,7 +454,7 @@ final class App
     private function activeUrls(): array
     {
         $rows = $this->pdo->query(<<<'SQL'
-            SELECT u.*, k.key_name, s.language, s.label
+            SELECT u.*, k.key_name, k.title AS key_title, s.language, s.label
             FROM urls u
             JOIN key_urls ku ON ku.url_id = u.id
             JOIN text_keys k ON k.id = ku.text_key_id AND k.archived_at IS NULL
@@ -437,17 +469,19 @@ final class App
                     'display_status' => $r['ignored'] ? 'ignored' : $r['status'],
                     'key_names' => [],
                     'languages' => [],
+                    'labels' => [],
                     'refs' => 0,
                 ];
             }
-            $urls[$id]['key_names'][$r['key_name']] = $r['key_name'];
+            $urls[$id]['key_names'][$r['key_name']] ??= ['name' => $r['key_title'] ?: $r['key_name'], 'faq' => (bool) $r['key_title']];
             $urls[$id]['languages'][$r['language']] = $r['language'];
+            $urls[$id]['labels'][$r['label']] = $r['label'];
             $urls[$id]['refs']++;
         }
 
         $order = array_flip($this->config->languages());
         foreach ($urls as &$u) {
-            $u['key_names'] = array_values($u['key_names']);
+            $u['labels'] = array_values($u['labels']);
             $langs = array_values($u['languages']);
             usort($langs, static fn($a, $b) => ($order[$a] ?? 99) <=> ($order[$b] ?? 99));
             $u['languages'] = $langs;

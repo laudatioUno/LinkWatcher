@@ -59,6 +59,26 @@ final class Util
         return $line ? $viewUrl . '#L' . $line : $viewUrl;
     }
 
+    /** Display name of a key: question title for FAQ entries, key name otherwise. */
+    public static function keyTitle(array $k): string
+    {
+        return (string) (($k['title'] ?? '') !== '' ? $k['title'] : $k['key_name']);
+    }
+
+    /** Link to the key's origin: the FAQ question on the website or the line on GitHub. */
+    public static function keyLink(array $k): ?string
+    {
+        if (!empty($k['link_url'])) {
+            return $k['link_url'];
+        }
+        return self::lineUrl($k['view_url'] ?? null, !empty($k['line']) ? (int) $k['line'] : null);
+    }
+
+    public static function keyLinkLabel(array $k): string
+    {
+        return !empty($k['link_url']) ? 'Website ↗' : 'GitHub ↗';
+    }
+
     public static function statusLabel(string $status): string
     {
         return match ($status) {
